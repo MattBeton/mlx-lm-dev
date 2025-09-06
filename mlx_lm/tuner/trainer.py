@@ -87,6 +87,7 @@ def iterate_batches(
     batch_size,
     max_seq_length,
     train=False,
+    distributed_skip=True,
 ):
     # Sort by length:
     if isinstance(dataset, CacheDataset):
@@ -102,8 +103,13 @@ def iterate_batches(
 
     # If running in distributed mode (N machines) then each one should skip N-1
     # samples
-    offset = mx.distributed.init().rank()
-    step = mx.distributed.init().size()
+    if distributed_skip:
+        offset = mx.distributed.init().rank()
+        step = mx.distributed.init().size()
+    else:
+        offset = 0
+        step = 1
+
     if batch_size % step != 0:
         raise ValueError("The batch size must be divisible by the number of workers")
 
