@@ -120,7 +120,7 @@ def iterate_batches(
     ]
 
     while True:
-        indices = np.random.permutation(len(batch_idx))
+        indices = np.random.default_rng(seed=42).permutation(len(batch_idx))
         for i in indices:
             batch = [dataset[j] for j in batch_idx[i]]
             if len(batch[0]) == 2:
