@@ -34,57 +34,10 @@ def build_schedule(schedule_config: Dict):
         return bound_schedule_fn
 
 
-def linear_to_lora_layers(
-    model: nn.Module,
-    num_layers: int,
-    config: Dict,
-    use_dora: bool = False,
-):
-    """
-    Convert some of the models linear layers to lora layers.
+def get_lora_keys(model):
+    keys = set[str]()
 
-    Args:
-        model (nn.Module): The neural network model.
-        num_layers (int): The number of blocks to convert to lora layers
-        starting from the last layer.
-        config (dict): More configuration parameters for LoRA, including the
-          rank, scale, and optional layer keys.
-        use_dora (bool): If True, uses DoRA instead of LoRA.
-          Default: ``False``
-    """
-
-    def to_lora(layer):
-        if not use_dora and hasattr(layer, "to_lora"):
-            return layer.to_lora(
-                r=config["rank"],
-                scale=config["scale"],
-                dropout=config["dropout"],
-            )
-
-        if isinstance(layer, (nn.Linear, nn.QuantizedLinear)):
-            LoRALayer = DoRALinear if use_dora else LoRALinear
-        elif isinstance(layer, (SwitchLinear, QuantizedSwitchLinear)):
-            if use_dora:
-                raise ValueError(f"{type(layer).__name__} doesn't support DoRA yet.")
-            LoRALayer = LoRASwitchLinear
-        elif isinstance(layer, (nn.Embedding, nn.QuantizedEmbedding)):
-            LoRALayer = DoRAEmbedding if use_dora else LoRAEmbedding
-        else:
-            raise ValueError(
-                f"Can't convert layer of type {type(layer).__name__} to LoRA"
-            )
-
-        return LoRALayer.from_base(
-            layer,
-            r=config["rank"],
-            scale=config["scale"],
-            dropout=config["dropout"],
-        )
-
-    keys = config.get("keys", None)
-    if keys is not None:
-        keys = set(keys)
-    elif model.model_type in {
+    if model.model_type in {
         "mistral",
         "mistral3",
         "llama",
@@ -190,6 +143,62 @@ def linear_to_lora_layers(
         keys.add("mixer.o_proj")
     else:
         raise ValueError(f"Lora does not support {model.model_type}")
+
+    return keys
+
+
+def linear_to_lora_layers(
+    model: nn.Module,
+    num_layers: int,
+    config: Dict,
+    use_dora: bool = False,
+):
+    """
+    Convert some of the models linear layers to lora layers.
+
+    Args:
+        model (nn.Module): The neural network model.
+        num_layers (int): The number of blocks to convert to lora layers
+        starting from the last layer.
+        config (dict): More configuration parameters for LoRA, including the
+          rank, scale, and optional layer keys.
+        use_dora (bool): If True, uses DoRA instead of LoRA.
+          Default: ``False``
+    """
+
+    def to_lora(layer):
+        if not use_dora and hasattr(layer, "to_lora"):
+            return layer.to_lora(
+                r=config["rank"],
+                scale=config["scale"],
+                dropout=config["dropout"],
+            )
+
+        if isinstance(layer, (nn.Linear, nn.QuantizedLinear)):
+            LoRALayer = DoRALinear if use_dora else LoRALinear
+        elif isinstance(layer, (SwitchLinear, QuantizedSwitchLinear)):
+            if use_dora:
+                raise ValueError(f"{type(layer).__name__} doesn't support DoRA yet.")
+            LoRALayer = LoRASwitchLinear
+        elif isinstance(layer, (nn.Embedding, nn.QuantizedEmbedding)):
+            LoRALayer = DoRAEmbedding if use_dora else LoRAEmbedding
+        else:
+            raise ValueError(
+                f"Can't convert layer of type {type(layer).__name__} to LoRA"
+            )
+
+        return LoRALayer.from_base(
+            layer,
+            r=config["rank"],
+            scale=config["scale"],
+            dropout=config["dropout"],
+        )
+
+    keys = config.get("keys", None)
+    if keys is not None:
+        keys = set(keys)
+    else:
+        keys = get_lora_keys(model)
 
     for l in model.layers[-max(num_layers, 0) :]:
         lora_layers = [(k, to_lora(m)) for k, m in l.named_modules() if k in keys]
