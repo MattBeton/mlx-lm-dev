@@ -450,7 +450,9 @@ class DeepseekV3Model(nn.Module):
             h = mx.distributed.send(h, (pipeline_rank - 1) % pipeline_size)
 
         # Broadcast h while keeping it in the graph
-        h = mx.distributed.all_gather(h)[: h.shape[0]]
+        if pipeline_size > 1:
+            # Broadcast h while keeping it in the grapTokenizerWrapperh
+            h = mx.distributed.all_gather(h)[: h.shape[0]]
 
         return self.norm(h)
 
